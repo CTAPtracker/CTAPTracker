@@ -205,18 +205,16 @@ function weekCreditHours(week) {
 }
 
 // Rostered hours = contracted hours minus leave and mentor adjustments
-// (travel is NOT deducted — it is accounted for in the configurable % target)
 function rosteredHours(state, week) {
   return state.baseHours - weekLeaveHours(state, week) - weekMentorTargetReduction(state, week);
 }
 
-// Adjusted target = rostered × configured % (default 80%) minus NPT deductions and travel
+// Adjusted target = rostered × configured % (default 80%) minus NPT deductions
 function adjustedTargetHours(state, week) {
   const rostered = rosteredHours(state, week);
   const pct = typeof state.weeklyTargetPct === 'number' ? state.weeklyTargetPct : 0.8;
   const npt = (week.deductionMins || 0) / 60;
-  const travel = getTravelDeductionHours(state, week);
-  return Math.max(0, rostered * pct - npt - travel);
+  return Math.max(0, rostered * pct - npt);
 }
 
 // Rolling average of last 4–6 completed non-empty weeks before weekKey
@@ -241,15 +239,14 @@ function rollingAvgInfo(state, weekKey) {
 function effectiveTargetHours(state, week, weekKey) {
   const rostered = rosteredHours(state, week);
   const npt = (week.deductionMins || 0) / 60;
-  const travel = getTravelDeductionHours(state, week);
   const rolling = rollingAvgInfo(state, weekKey);
   if (rolling && state.baseHours > 0) {
     const scaledAvg = rolling.avg * (rostered / state.baseHours);
-    return { hours: Math.max(0, scaledAvg - npt - travel), isRolling: true, n: rolling.n, displayTarget: Math.max(0, scaledAvg) };
+    return { hours: Math.max(0, scaledAvg - npt), isRolling: true, n: rolling.n, displayTarget: Math.max(0, scaledAvg) };
   }
   const pct = typeof state.weeklyTargetPct === 'number' ? state.weeklyTargetPct : 0.8;
   const displayTarget = rostered * pct;
-  return { hours: Math.max(0, displayTarget - npt - travel), isRolling: false, n: 0, displayTarget };
+  return { hours: Math.max(0, displayTarget - npt), isRolling: false, n: 0, displayTarget };
 }
 
 function bonusAchieved(state, week) {

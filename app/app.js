@@ -18,6 +18,7 @@ let openSettingsInfo = null;
 let creditsInfoExpanded = false;
 let howToExpanded = false;
 let graphWeekKey = getWeekKey(new Date());
+let graphSelectedDay = null;
 let _ctapUser = null;          // populated by __ctapInit
 let _ctapDisplayName = '';     // populated by __ctapInit
 let _isOffline = false;
@@ -220,7 +221,6 @@ function buildDashboard() {
   const isRolling = effective.isRolling;
   const rollingN = effective.n;
   const rosteredH = rosteredHours(state, week);
-  const allowanceH = Math.max(0, rosteredH - displayTargetH);
   const weekPct = targetH > 0 ? Math.min((earnedHours / targetH) * 100, 100) : 0;
   const bonus = earnedHours >= targetH;
   // Three-band: green ≥90%, amber ≥70%, red <70%
@@ -244,7 +244,8 @@ function buildDashboard() {
   const todayDedMins = (week.deductionLog || [])
     .filter(d => d.date === todayKey)
     .reduce((s, d) => s + d.mins, 0);
-  const dailyTargetHours = Math.max(0, getDailyTarget(state, week, todayKey) - todayDedMins / 60);
+  const pctFactor = typeof state.weeklyTargetPct === 'number' ? state.weeklyTargetPct : 0.8;
+  const dailyTargetHours = Math.max(0, getDailyTarget(state, week, todayKey) * pctFactor - todayDedMins / 60);
   const todayJobs = (week.days || {})[todayKey] || [];
   const todayHours = todayJobs.reduce((s, j) => s + j.creditMins, 0) / 60;
 
@@ -417,8 +418,7 @@ function buildDashboard() {
         </div>
         <div class="split-hours">${earnedHours.toFixed(2)}<span class="split-unit">h</span></div>
         <div class="week-rostered-row">Rostered ${rosteredH.toFixed(1)}h <span class="week-rostered-sep">·</span> Target ${displayTargetH.toFixed(1)}h</div>
-        ${allowanceH >= 0.1 ? `<div class="week-allowance-label">Allows ${allowanceH.toFixed(1)}h travel &amp; PF</div>` : ''}
-        <div class="week-target-basis">${isRolling ? `Based on your last ${rollingN} weeks` : 'Est. · personalises after 4 weeks'}</div>
+        ${isRolling ? `<div class="week-target-basis">Rolling avg · last ${rollingN} weeks</div>` : ''}
         <div class="week-chart">${weekBarsHTML}</div>
       </div>
     </div>
@@ -454,12 +454,12 @@ function buildDashboard() {
               <span class="job-credits" style="color:var(--accent)">${todayMentor === 'full' ? 'Target 0h' : '−20%'}</span>
               <button class="del-mentor-btn" data-day="${todayKey}" title="Remove">×</button>
             </div>` : '')
-          : '<div class="empty" style="padding:10px 0">No jobs logged today</div>'
+          : '<button id="go-log-tab-empty" class="empty-log-btn">No jobs logged today — tap to log one</button>'
         }
         ${hasPrevDayJobs ? `
           <div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--sep);display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:0.72rem;color:var(--muted)">Earlier this week</span>
-            <button id="go-history-tab" style="background:none;border:none;padding:0;font-size:0.78rem;font-weight:600;color:var(--accent);cursor:pointer;-webkit-tap-highlight-color:transparent">+${prevDayHours.toFixed(2)}h — see History tab</button>
+            <span style="font-size:0.72rem;color:var(--muted)">+${prevDayHours.toFixed(2)}h earlier this week</span>
+            <button id="go-log-tab-footer" style="background:none;border:none;padding:0;font-size:0.78rem;font-weight:600;color:var(--accent);cursor:pointer;-webkit-tap-highlight-color:transparent">Log Job →</button>
           </div>` : ''}
       </div>
     </details>
@@ -565,9 +565,11 @@ function buildCreditGraph() {
   });
   const dayCredits = dayData.map(d => d.cr);
 
-  const dailyRef = state.baseHours / 5;
-  const maxCred  = Math.max(...dayCredits, dailyRef, 0.01);
-  const maxY     = maxCred * 1.25;
+  // Daily target uses the same pct factor as the dashboard
+  const pctFactor = typeof state.weeklyTargetPct === 'number' ? state.weeklyTargetPct : 0.8;
+  const dailyRef  = (state.baseHours / 5) * pctFactor;
+  const maxCred   = Math.max(...dayCredits, dailyRef, 0.01);
+  const maxY      = maxCred * 1.25;
 
   // SVG layout
   const W = 300, H = 110;
@@ -604,37 +606,45 @@ function buildCreditGraph() {
 
   const hasData = visibleDots.some(d => d.cr > 0);
 
+  // Clear selected day if switching weeks
+  if (graphSelectedDay && !days.includes(graphSelectedDay)) graphSelectedDay = null;
+
   return `
-    <div class="credit-graph-card dashboard-card">
-      <div class="credit-graph-header">
-        <span class="credit-graph-title">Daily Credits</span>
-        <div class="credit-graph-nav">
+    <details class="insights-details" open>
+      <summary class="insights-summary">
+        <span>Daily Credits</span>
+        <span class="insights-count">${weekLabel(graphWeekKey)}</span>
+      </summary>
+      <div class="credit-graph-card" style="position:relative">
+        <div class="credit-graph-nav" style="justify-content:flex-end;margin-bottom:8px">
           <button class="graph-week-btn" id="graph-prev-week" ${!canGoPrev ? 'disabled' : ''}>&#8249;</button>
-          <span class="graph-week-label">${weekLabel(graphWeekKey)}</span>
+          <span class="graph-week-label" style="min-width:100px;text-align:center">${weekLabel(graphWeekKey)}</span>
           <button class="graph-week-btn" id="graph-next-week" ${!canGoNext ? 'disabled' : ''}>&#8250;</button>
         </div>
+        <svg viewBox="0 0 ${W} ${H}" class="credit-graph-svg" preserveAspectRatio="none">
+          <line x1="${lm}" y1="${(tm + ch / 2).toFixed(0)}" x2="${W - rm}" y2="${(tm + ch / 2).toFixed(0)}" class="graph-grid-line"/>
+          <line x1="${lm}" y1="${targetY}" x2="${W - rm}" y2="${targetY}" class="graph-target-line"/>
+          <text x="${W - rm - 1}" y="${(parseFloat(targetY) - 2).toFixed(0)}" class="graph-target-lbl" text-anchor="end">${dailyRef.toFixed(1)}h</text>
+          ${visibleDots.length >= 2 ? `<polyline points="${linePoints}" class="graph-line"/>` : ''}
+          ${visibleDots.map(({ i, dk, cr, count }) => {
+            const isToday = isGrCurrent && dk === todayKey;
+            const isSelected = dk === graphSelectedDay;
+            const aboveRef = cr >= dailyRef - 0.01;
+            const dotCls = cr === 0 ? 'graph-dot graph-dot-zero' : aboveRef ? 'graph-dot graph-dot-above' : 'graph-dot';
+            const r = isSelected ? '6' : isToday ? '5' : '4';
+            const cx = xi(i).toFixed(1), cy = yv(cr).toFixed(1);
+            return `<circle cx="${cx}" cy="${cy}" r="${r}" class="${dotCls}${isToday ? ' graph-dot-today' : ''}${isSelected ? ' graph-dot-selected' : ''}"/>
+            <circle cx="${cx}" cy="${cy}" r="14" fill="transparent" class="graph-dot-hit" data-day="${dk}" data-jobs="${count}" data-credits="${cr.toFixed(2)}"/>`;
+          }).join('')}
+          ${days.map((dk, i) => {
+            const isToday = isGrCurrent && dk === todayKey;
+            return `<text x="${xi(i).toFixed(1)}" y="${H - 5}" class="graph-day-lbl${isToday ? ' graph-day-today' : ''}" text-anchor="middle">${DAY_ABBR[i]}</text>`;
+          }).join('')}
+        </svg>
+        ${isFutureWeek ? `<p class="graph-empty-msg">Future week — no data yet</p>` : (!hasData ? `<p class="graph-empty-msg">No jobs logged this week</p>` : '')}
+        <div class="graph-tooltip" id="graph-tooltip" style="display:none"></div>
       </div>
-      <svg viewBox="0 0 ${W} ${H}" class="credit-graph-svg" preserveAspectRatio="none">
-        <line x1="${lm}" y1="${(tm + ch / 2).toFixed(0)}" x2="${W - rm}" y2="${(tm + ch / 2).toFixed(0)}" class="graph-grid-line"/>
-        <line x1="${lm}" y1="${targetY}" x2="${W - rm}" y2="${targetY}" class="graph-target-line"/>
-        <text x="${W - rm - 1}" y="${(parseFloat(targetY) - 2).toFixed(0)}" class="graph-target-lbl" text-anchor="end">${dailyRef.toFixed(1)}h</text>
-        ${visibleDots.length >= 2 ? `<polyline points="${linePoints}" class="graph-line"/>` : ''}
-        ${visibleDots.map(({ i, dk, cr, count }) => {
-          const isToday = isGrCurrent && dk === todayKey;
-          const aboveRef = cr >= dailyRef - 0.01;
-          const dotCls = cr === 0 ? 'graph-dot graph-dot-zero' : aboveRef ? 'graph-dot graph-dot-above' : 'graph-dot';
-          const cx = xi(i).toFixed(1), cy = yv(cr).toFixed(1);
-          return `<circle cx="${cx}" cy="${cy}" r="${isToday ? '5' : '4'}" class="${dotCls}${isToday ? ' graph-dot-today' : ''}"/>
-          <circle cx="${cx}" cy="${cy}" r="14" fill="transparent" class="graph-dot-hit" data-day="${dk}" data-jobs="${count}"/>`;
-        }).join('')}
-        ${days.map((dk, i) => {
-          const isToday = isGrCurrent && dk === todayKey;
-          return `<text x="${xi(i).toFixed(1)}" y="${H - 5}" class="graph-day-lbl${isToday ? ' graph-day-today' : ''}" text-anchor="middle">${DAY_ABBR[i]}</text>`;
-        }).join('')}
-      </svg>
-      ${isFutureWeek ? `<p class="graph-empty-msg">Future week — no data yet</p>` : (!hasData ? `<p class="graph-empty-msg">No jobs logged this week</p>` : '')}
-      <div class="graph-day-info" id="graph-day-info"></div>
-    </div>
+    </details>
   `;
 }
 
@@ -913,111 +923,33 @@ function buildInsightsCard(dailyTarget, todayHours, weekTarget, weekEarned, toda
 }
 
 // ── Ticker Strip ───────────────────────────────────────────────────────────
+const TICKER_TIPS = [
+  'Hive fit + sale combo = 2.32h — highest ROI single visit available',
+  'Long Duration (completed) = 2.45h — your biggest single-job credit',
+  'First Visit (BBF/WAU/WAW) earns 0.85h — more than a standard Annual Service',
+  'Boiler lead (HI Lead) earns 0.69h with no parts required',
+  'Inhibitor fit + SGO = 0.61h — look out for the opportunity after any First Visit',
+  'Annual Service (BBF/WAU/WAW/AGA) earns 0.75h vs 0.48h for CHB',
+  'Breakdown First Fix and OCA both earn 0.67h each',
+  'Linked Breakdown earns the same as a standard Breakdown — 0.67h',
+  'First Visit (CHB) = 0.57h · First Visit (BBF/WAU/WAW) = 0.85h',
+  'Upgrade Work earns 0.72h per quoted hour — variable, check the job sheet',
+  'EV Charging earns 0.36h — small but it counts, always log it',
+  'CO alarm sell earns 0.12h — add up across the week',
+  'Mark Annual Leave in Schedule to keep your weekly target accurate',
+  'Log NPT and Early Finish entries so your daily gaps stay honest',
+  'CTAP personalises to your rolling average after 4 completed weeks',
+  'Coach Mode surfaces live opportunities based on jobs logged today',
+];
+
 function buildTickerStrip() {
-  const todayKey = getTodayKey();
-  const todayWk  = getWeekKey(new Date());
-  const week     = state.weeks[todayWk] || { days: {}, shifts: {} };
-  const items    = [];
-
-  const isoWkNum = (function() {
-    const d = new Date(); d.setHours(0,0,0,0);
-    const dow = d.getDay();
-    const thu = new Date(d); thu.setDate(d.getDate() + 3 - (dow + 6) % 7);
-    const w1  = new Date(thu.getFullYear(), 0, 4);
-    return 1 + Math.round(((thu - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7);
-  })();
-
-  const earned  = weekCreditHours(week);
-  const target  = adjustedTargetHours(state, week);
-  const bonus   = bonusAchieved(state, week);
-  const pct     = target > 0 ? (earned / target) * 100 : 0;
-  const wkDays  = weekDays(todayWk);
-
-  // ── 1. Today's contribution to weekly target ──
-  const todayJobs = (week.days || {})[todayKey] || [];
-  const todayH    = todayJobs.reduce((s, j) => s + j.creditMins, 0) / 60;
-  if (todayH > 0) {
-    items.push(`Today +${todayH.toFixed(2)}h · ${Math.round(pct)}% of weekly target`);
-  }
-
-  // ── 2. Time since last logged job ──
-  const allFlat = Object.values(week.days || {}).flat().filter(j => j.ts);
-  if (allFlat.length > 0) {
-    const lastJob  = allFlat.reduce((a, b) => b.ts > a.ts ? b : a);
-    const minsAgo  = Math.round((Date.now() - lastJob.ts) / 60000);
-    if (minsAgo < 600) {
-      const shortName = lastJob.name.replace(/\s*[\(\–\-].*$/, '').trim();
-      const timeStr   = minsAgo < 60
-        ? `${minsAgo}m ago`
-        : `${Math.floor(minsAgo / 60)}h ${String(minsAgo % 60).padStart(2, '0')}m ago`;
-      items.push(`Last: ${shortName} · ${timeStr}`);
-    }
-  }
-
-  // ── 3. WK number + weekly status ──
-  const bonusTxt = bonus ? 'Bonus ✓' : pct >= 90 ? 'On track' : pct >= 70 ? 'Amber' : 'Behind';
-  items.push(`WK ${isoWkNum} · ${bonusTxt}`);
-
-  // ── 4. Hours/jobs to weekly bonus ──
-  if (!bonus && target > 0) {
-    const needed   = target - earned;
-    const bdjobs   = Math.ceil(needed / (56 / 60));
-    items.push(`${needed.toFixed(1)}h to bonus · ~${bdjobs} jobs`);
-  }
-
-  // ── 5. CTAP balance ──
-  const bal = cumulativeBalance(state);
-  if (Math.abs(bal) >= 0.01) {
-    items.push(`CTAP ${bal >= 0 ? '+' : ''}${bal.toFixed(2)}h${bal >= 0 ? ' in credit' : ' deficit'}`);
-  }
-
-  // ── 6. Days left in working week ──
-  const dayOfWk  = (new Date().getDay() + 6) % 7; // 0=Mon … 4=Fri
-  const daysLeft = Math.max(0, 4 - dayOfWk);
-  if (daysLeft === 0 && dayOfWk === 4) {
-    items.push('Friday · Last chance for bonus');
-  } else if (daysLeft > 0) {
-    items.push(`${daysLeft} working day${daysLeft === 1 ? '' : 's'} left this week`);
-  }
-
-  // ── 7. Last week result ──
-  const prevDate = new Date(); prevDate.setDate(prevDate.getDate() - 7);
-  const prevWk   = state.weeks[getWeekKey(prevDate)];
-  if (prevWk) {
-    const prevGap = weekCreditHours(prevWk) - adjustedTargetHours(state, prevWk);
-    items.push(prevGap >= 0
-      ? `Last week: +${prevGap.toFixed(2)}h above target`
-      : `Last week: ${Math.abs(prevGap).toFixed(2)}h short`);
-  }
-
-  // ── 8. Hive installs this week ──
-  const hiveIds = new Set(JOB_TYPES.hive.map(j => j.id));
-  let hiveCount = 0;
-  Object.values(week.days || {}).forEach(dayJobs => {
-    dayJobs.forEach(j => { if (hiveIds.has(j.id)) hiveCount++; });
-  });
-  if (hiveCount > 0) {
-    items.push(`${hiveCount} Hive install${hiveCount === 1 ? '' : 's'} this week`);
-  }
-
-  // ── 9. Weekly target on-track days (how many days had any credits) ──
-  const daysWithCredits = wkDays.slice(0, 5).filter(dk => {
-    if (dk > todayKey) return false;
-    if (dayIsLeave(week, dk)) return false;
-    return ((week.days || {})[dk] || []).length > 0;
-  }).length;
-  if (daysWithCredits >= 3) items.push(`${daysWithCredits} productive days this week`);
-
-  if (items.length === 0) return '';
-
   const sep      = '<span class="ticker-sep">·</span>';
-  const itemsHTML = items.map(t => `<span class="ticker-item">${t}</span>`).join(sep);
+  const itemsHTML = TICKER_TIPS.map(t => `<span class="ticker-item">${t}</span>`).join(sep);
   const track    = itemsHTML + sep + itemsHTML + sep;
-  const duration = Math.max(20, items.length * 6);
 
   return `
     <div class="ticker-strip">
-      <div class="ticker-track" style="animation-duration:${duration}s">
+      <div class="ticker-track" style="animation-duration:90s">
         ${track}
       </div>
     </div>`;
@@ -1388,7 +1320,7 @@ function buildSettings() {
     <div class="st-card">
       <div class="st-row">
         <span class="st-row-label">Version</span>
-        <span class="st-row-value">v0.5.0 · ${_ctapUser ? 'synced' : 'local'}</span>
+        <span class="st-row-value">v0.6.0 · ${_ctapUser ? 'synced' : 'local'}</span>
       </div>
       ${rowDiv()}
       <button class="st-nav-row" id="toggle-credits-info">
@@ -2385,11 +2317,9 @@ function attachListeners() {
     if (window.__ctapShowAuth) window.__ctapShowAuth('signup');
   });
 
-  // "Earlier this week" → History tab
-  const goHistoryBtn = document.getElementById('go-history-tab');
-  if (goHistoryBtn) goHistoryBtn.addEventListener('click', () => {
-    activeTab = 'history';
-    render();
+  // "No jobs logged today" empty state + "Log Job →" footer → Log tab
+  [document.getElementById('go-log-tab-empty'), document.getElementById('go-log-tab-footer')].forEach(btn => {
+    if (btn) btn.addEventListener('click', () => { activeTab = 'log'; render(); });
   });
 
   // CTAP projected toggle
@@ -2399,24 +2329,50 @@ function attachListeners() {
     render();
   });
 
-  // Credit graph dot tap — show job count
+  // Credit graph dot tap — floating tooltip above dot, highlight selected
   const graphCard = document.querySelector('.credit-graph-card');
   if (graphCard) {
     graphCard.addEventListener('click', e => {
       const hit = e.target.closest('.graph-dot-hit');
       if (!hit) return;
-      const info = document.getElementById('graph-day-info');
-      if (!info) return;
-      const dk = hit.dataset.day;
-      const count = parseInt(hit.dataset.jobs, 10);
-      if (info.dataset.activeDay === dk && info.textContent) {
-        info.textContent = '';
-        info.dataset.activeDay = '';
-      } else {
-        const dayName = new Date(dk + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
-        info.textContent = `${dayName} — ${count} ${count === 1 ? 'job' : 'jobs'}`;
-        info.dataset.activeDay = dk;
+      const dk      = hit.dataset.day;
+      const count   = parseInt(hit.dataset.jobs, 10);
+      const credits = parseFloat(hit.dataset.credits || '0');
+      const tooltip = document.getElementById('graph-tooltip');
+      if (!tooltip) return;
+
+      if (graphSelectedDay === dk) {
+        // tap same dot → dismiss
+        graphSelectedDay = null;
+        tooltip.style.display = 'none';
+        document.querySelectorAll('.graph-dot-selected').forEach(d => d.classList.remove('graph-dot-selected'));
+        return;
       }
+
+      graphSelectedDay = dk;
+
+      // Highlight dot
+      document.querySelectorAll('.graph-dot-selected').forEach(d => d.classList.remove('graph-dot-selected'));
+      const dot = hit.previousElementSibling;
+      if (dot) dot.classList.add('graph-dot-selected');
+
+      // Position tooltip above hit area, relative to card
+      const cardRect = graphCard.getBoundingClientRect();
+      const hitRect  = hit.getBoundingClientRect();
+      const cx = hitRect.left + hitRect.width / 2 - cardRect.left;
+      const cy = hitRect.top - cardRect.top;
+      const tipW = 110;
+      const left = Math.max(4, Math.min(cx - tipW / 2, cardRect.width - tipW - 4));
+      const top  = Math.max(4, cy - 44);
+
+      const dayName = new Date(dk + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+      const body    = credits > 0 ? `${credits.toFixed(2)}h · ${count} job${count !== 1 ? 's' : ''}` : 'No jobs logged';
+
+      tooltip.innerHTML = `<strong>${dayName}</strong><br>${body}`;
+      tooltip.style.left    = `${left}px`;
+      tooltip.style.top     = `${top}px`;
+      tooltip.style.display = 'block';
+      tooltip.dataset.activeDay = dk;
     });
   }
 
@@ -2427,13 +2383,14 @@ function attachListeners() {
     const d = new Date(graphWeekKey + 'T00:00:00');
     d.setDate(d.getDate() - 7);
     graphWeekKey = getWeekKey(d);
+    graphSelectedDay = null;
     render();
   });
   if (graphNext) graphNext.addEventListener('click', () => {
     const d = new Date(graphWeekKey + 'T00:00:00');
     d.setDate(d.getDate() + 7);
     const nk = getWeekKey(d);
-    if (nk <= getWeekKey(new Date())) { graphWeekKey = nk; render(); }
+    if (nk <= getWeekKey(new Date())) { graphWeekKey = nk; graphSelectedDay = null; render(); }
   });
 
   // Dismiss deficit-cleared celebration card

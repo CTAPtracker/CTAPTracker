@@ -1249,6 +1249,7 @@ details[open] .info-chevron { transform: rotate(90deg); }
 
 /* ── Utility ── */
 .empty { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 32px 0; }
+.empty-log-btn { width: 100%; background: none; border: none; padding: 12px 0; text-align: center; font-size: 0.82rem; font-weight: 600; color: var(--accent); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .section-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 16px 0 8px; }
 
 @media (min-width: 480px) {
@@ -2734,14 +2735,24 @@ details[open] .info-chevron { transform: rotate(90deg); }
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.graph-day-info {
-  min-height: 18px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text);
-  text-align: center;
-  padding: 5px 0 0;
+.graph-dot-selected {
+  stroke: var(--text);
+  stroke-width: 2;
 }
+.graph-tooltip {
+  position: absolute;
+  background: var(--surface2);
+  border: 1px solid var(--sep);
+  border-radius: var(--jcpd-r-sm);
+  padding: 5px 9px;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  color: var(--text);
+}
+.graph-tooltip strong { font-weight: 700; font-size: 0.7rem; }
 
 /* ── About watermark ── */
 .about-watermark {
@@ -3223,19 +3234,18 @@ details[open] .info-chevron { transform: rotate(90deg); }
 /* ── Travel Profile (Settings) ── */
 .st-travel-seg {
   display: flex;
-  gap: 6px;
-  padding-bottom: 4px;
+  gap: 5px;
 }
 .st-travel-btn {
   flex: 1;
   background: var(--surface2);
   border: 1.5px solid var(--sep);
   border-radius: var(--jcpd-r-sm);
-  padding: 8px 4px;
+  padding: 6px 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -3246,22 +3256,21 @@ details[open] .info-chevron { transform: rotate(90deg); }
   border-color: var(--accent);
 }
 .st-travel-name {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text);
 }
 .st-travel-btn.active .st-travel-name { color: var(--accent); }
 .st-travel-desc {
-  font-size: 0.59rem;
+  font-size: 0.55rem;
   color: var(--muted);
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 .st-travel-mins {
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   font-weight: 700;
   color: var(--accent);
-  margin-top: 1px;
 }
 .st-impact-line {
   font-size: 0.72rem;
