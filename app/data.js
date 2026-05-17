@@ -146,15 +146,6 @@ function weekMentorTargetReduction(state, week) {
   return reduction;
 }
 
-function getTravelDeductionHours(state, week) {
-  const minsPerDay = state.travelMinsPerDay || 0;
-  if (minsPerDay <= 0 || !state.baseHours) return 0;
-  const dailyH = state.baseHours / 5;
-  const rostered = rosteredHours(state, week);
-  const effectiveDays = dailyH > 0 ? rostered / dailyH : 0;
-  return effectiveDays * minsPerDay / 60;
-}
-
 function cumulativeBalance(state) {
   var currentWk = getWeekKey(new Date());
   var total = state.startingBalance || 0;

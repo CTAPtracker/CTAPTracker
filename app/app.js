@@ -1209,26 +1209,6 @@ function buildSettings() {
     `<button class="st-info-btn${openSettingsInfo === key ? ' active' : ''}" data-info="${key}">i</button>`;
   const infoPopover = text => `<div class="st-info-popover">${text}</div>`;
 
-  const TRAVEL_PRESETS = [
-    { id: 'light',    label: 'Light',    desc: 'City or town patch',            mins: 45  },
-    { id: 'moderate', label: 'Moderate', desc: 'Mixed area, typical spread',    mins: 90  },
-    { id: 'heavy',    label: 'Heavy',    desc: 'Rural or large patch',          mins: 120 },
-  ];
-  const travelProfile = state.travelProfile || null;
-  const travelMins    = state.travelMinsPerDay || 0;
-  const travelWeekH   = (travelMins / 60) * 5;
-  const travelTargetAfter = Math.max(0, baseHours * (wkPct / 100) - travelWeekH);
-  const impactLine = travelMins > 0
-    ? `Est. ${travelWeekH.toFixed(1)}h deducted per week — adjusts your target from ${baseHours}h to ~${travelTargetAfter.toFixed(1)}h. Actual figure confirmed after each pay period.`
-    : `Select a profile or enter a custom value to see the impact.`;
-  const travelSegHTML = TRAVEL_PRESETS.map(p =>
-    `<button class="st-travel-btn${travelProfile === p.id ? ' active' : ''}" data-travel-preset="${p.id}">
-      <span class="st-travel-name">${p.label}</span>
-      <span class="st-travel-desc">${p.desc}</span>
-      <span class="st-travel-mins">~${p.mins < 60 ? p.mins + 'min' : (p.mins / 60) + 'h'}</span>
-    </button>`
-  ).join('');
-
   return `
     ${sectionLabel('APPEARANCE')}
     <div class="st-card">
@@ -1250,22 +1230,6 @@ function buildSettings() {
           <span class="coach-slider"></span>
         </label>
       </div>
-    </div>
-
-    ${sectionLabel('TRAVEL PROFILE')}
-    <div class="st-card">
-      <div class="st-travel-seg">${travelSegHTML}</div>
-      ${rowDiv()}
-      <div class="st-impact-line">${impactLine}</div>
-      ${rowDiv()}
-      <div class="st-row">
-        <span class="st-row-label">Know your average? Set it yourself</span>
-        <div class="st-row-controls">
-          ${numInput('travel-mins-input', travelMins > 0 ? travelMins : '', 'min/day', 'min="0" max="240" inputmode="numeric" placeholder="—"')}
-        </div>
-      </div>
-      ${rowDiv()}
-      <div class="st-travel-note">Travel card figures settle two weeks after each pay period. Your profile gives the app a working assumption so the maths stays accurate in real time.</div>
     </div>
 
     ${sectionLabel('TARGETS')}
@@ -2448,23 +2412,6 @@ function attachListeners() {
     v => { state.startingBalance = parseFloat(v.toFixed(1)); },
     v => Math.max(-999, Math.min(999, parseFloat(v) || 0)),
     () => (state.startingBalance || 0).toFixed(1));
-
-  // Travel preset buttons
-  const TRAVEL_PRESET_MINS = { light: 45, moderate: 90, heavy: 120 };
-  document.querySelectorAll('[data-travel-preset]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const preset = btn.dataset.travelPreset;
-      state.travelProfile    = preset;
-      state.travelMinsPerDay = TRAVEL_PRESET_MINS[preset];
-      saveState(state);
-      showToast('✓ Travel profile saved');
-      render();
-    });
-  });
-  bindNumInput('travel-mins-input',
-    v => { state.travelMinsPerDay = v; state.travelProfile = null; },
-    v => Math.max(0, Math.min(240, parseInt(v) || 0)),
-    () => state.travelMinsPerDay > 0 ? state.travelMinsPerDay : '');
 
   // Best advice strip dismiss
   document.querySelectorAll('[data-dismiss-opp]').forEach(btn => {
