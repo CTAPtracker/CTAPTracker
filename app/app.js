@@ -440,7 +440,7 @@ function buildDashboard() {
               <span class="job-credits" style="color:var(--accent)">${todayMentor === 'full' ? 'Target 0h' : '−20%'}</span>
               <button class="del-mentor-btn" data-day="${todayKey}" title="Remove">×</button>
             </div>` : '')
-          : '<button id="go-log-tab-empty" class="empty-log-btn">No jobs logged today — tap to log one</button>'
+          : '<button id="go-log-tab-empty" class="empty-log-btn">+ Add a job</button>'
         }
         ${hasPrevDayJobs ? `
           <div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--sep);display:flex;justify-content:space-between;align-items:center">
