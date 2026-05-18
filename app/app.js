@@ -2092,6 +2092,18 @@ function attachListeners() {
     render();
   });
 
+  // iOS sticky-header workaround: when a <details> on the dashboard
+  // collapses, the page shrinks under a scrolled viewport and the sticky
+  // .top-bar can detach until the next scroll. Nudging scroll by 0 forces
+  // iOS to re-anchor it.
+  document.querySelectorAll('details.insights-details').forEach(d => {
+    d.addEventListener('toggle', () => {
+      requestAnimationFrame(() => {
+        window.scrollTo(window.scrollX, window.scrollY);
+      });
+    });
+  });
+
   // Credit graph dot tap — floating tooltip above dot, highlight selected
   const graphCard = document.querySelector('.credit-graph-card');
   if (graphCard) {
