@@ -240,21 +240,22 @@ function buildDashboard() {
   const rosteredH = rosteredHours(state, week);
   const weekPct = targetH > 0 ? Math.min((earnedHours / targetH) * 100, 100) : 0;
   const bonus = earnedHours >= targetH;
-  // Three-band: green ≥90%, amber ≥70%, red <70%
-  const weekColour = weekPct >= 90 ? 'green' : weekPct >= 70 ? 'amber' : 'red';
-
-  // ── Trend indicator (needs ≥2 completed weeks before current) ──
-  const prevCompletedKeys = Object.keys(state.weeks).filter(wk => wk < currentWeekKey).sort();
-  const canShowTrend = prevCompletedKeys.length >= 2;
-  const prevWkKey = canShowTrend ? prevCompletedKeys[prevCompletedKeys.length - 1] : null;
-  const prevWkEarned = prevWkKey ? weekCreditHours(state.weeks[prevWkKey]) : null;
-  const trendNetChange = prevWkEarned !== null ? earnedHours - prevWkEarned : null;
-  const trendFlatThresh = prevWkEarned > 0 ? prevWkEarned * 0.05 : 0.5;
-  const trendArrow = trendNetChange === null ? '' :
-    trendNetChange > trendFlatThresh ? '↑' :
-    trendNetChange < -trendFlatThresh ? '↓' : '→';
-  const trendCls = trendArrow === '↑' ? 'green' : trendArrow === '↓' ? 'red' : 'muted';
-  const trendSign = trendNetChange !== null && trendNetChange >= 0 ? '+' : '';
+  // Pace-aware colour for the current week: compare weekPct against expected
+  // pace based on completed working days (days strictly before today, excluding
+  // leave). Past/future weeks keep the absolute three-band thresholds since
+  // pace isn't meaningful.
+  let weekColour;
+  if (isCurrentWeek) {
+    const wkDays5 = weekDays(currentWeekKey).slice(0, 5);
+    const workingDays = wkDays5.filter(dk => !dayIsLeave(week, dk));
+    const completed = workingDays.filter(dk => dk < todayKey).length;
+    const pacePct = workingDays.length > 0 ? (completed / workingDays.length) * 100 : 0;
+    weekColour = weekPct >= pacePct ? 'green'
+               : weekPct >= pacePct - 10 ? 'amber'
+               : 'red';
+  } else {
+    weekColour = weekPct >= 90 ? 'green' : weekPct >= 70 ? 'amber' : 'red';
+  }
 
   // ── Today's stats ──
   const todayKey = getTodayKey();
@@ -379,9 +380,13 @@ function buildDashboard() {
           <div class="hero-col-num${Math.max(0, targetH - earnedHours) > 0 ? ' amber' : ' green'}">${Math.max(0, targetH - earnedHours).toFixed(2)}<span class="hero-col-unit">h</span></div>
         </div>
       </div>
-      <div class="progress-bar" style="margin-bottom:6px">
-        <div class="progress-bar-fill ${weekColour}" style="width:${weekPct.toFixed(1)}%"></div>
-      </div>
+      ${(() => {
+        const dPct = dailyTargetHours > 0 ? Math.min((todayHours / dailyTargetHours) * 100, 100) : (todayHours > 0 ? 100 : 0);
+        const dCol = dPct >= 100 ? 'green' : dPct >= 70 ? 'amber' : 'red';
+        return `<div class="progress-bar" style="margin-bottom:6px">
+          <div class="progress-bar-fill ${dCol}" style="width:${dPct.toFixed(1)}%"></div>
+        </div>`;
+      })()}
       ${contextLine ? `<div class="hero-context-line">${contextLine}</div>` : ''}
     </div>
 
@@ -401,10 +406,9 @@ function buildDashboard() {
       <div class="split-card" id="week-tile">
         <div class="split-card-top">
           <span class="split-card-label">Week</span>
-          <div style="display:flex;align-items:center;gap:4px">
-            <span class="pct-badge pct-badge-${weekColour}">${Math.round(weekPct)}%</span>
-            ${canShowTrend && trendArrow ? `<span class="week-trend-badge week-trend-${trendCls}">${trendArrow} ${trendSign}${Math.abs(trendNetChange).toFixed(1)}h</span>` : ''}
+          <div style="display:flex;align-items:center;gap:6px">
             ${isCurrentWeek ? `<button id="ctap-proj-toggle" class="ctap-proj-btn${ctapProjectedMode ? ' active' : ''}">${ctapProjectedMode ? 'Projected' : 'Actual'}</button>` : ''}
+            <span class="pct-badge pct-badge-${weekColour}">${Math.round(weekPct)}%</span>
           </div>
         </div>
         <div class="split-hours">${earnedHours.toFixed(2)}<span class="split-unit">h</span></div>
