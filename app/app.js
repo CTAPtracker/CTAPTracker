@@ -990,7 +990,7 @@ function buildSettings() {
       ${legalInfoExpanded ? `<div class="st-credits-body">
         <p class="st-legal-p">Numbers shown here are personal estimates and may not match official Centrica or British Gas systems. Always check your CTAP balance and pay against your payslip and company tools before acting on them.</p>
         <p class="st-legal-p">This app isn't affiliated with, endorsed by, or representative of Centrica plc, British Gas, or any employer. It's a personal tool, provided as-is with no warranty.</p>
-        <p class="st-legal-p">Anything you enter is kept on your device${_ctapUser ? ' and synced to your personal account on Supabase (EU)' : ' — sign in to also sync to your personal account on Supabase (EU)'}. Nothing is shared with third parties. You can delete your account and all your data at any time — just message Jake on Teams.</p>
+        <p class="st-legal-p">Anything you enter is kept on your device${_ctapUser ? ' and synced to your personal account on Supabase (EU)' : ' — sign in to also sync to your personal account on Supabase (EU)'}. Nothing is shared with third parties.</p>
       </div>` : ''}
       ${rowDiv()}
       <div class="st-row">
