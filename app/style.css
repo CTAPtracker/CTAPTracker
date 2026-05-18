@@ -603,6 +603,8 @@ body {
 .st-row-label { font-size: 0.84rem; font-weight: 500; }
 .st-row-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
 .st-row-value { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.st-row-value-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.st-row-value-sub { font-size: 0.66rem; color: var(--muted); opacity: 0.75; }
 .st-row-link { font-size: 0.84rem; color: var(--accent); text-decoration: none; white-space: nowrap; }
 .st-row-divider { height: 0.5px; background: var(--sep); margin: 0 16px; }
 .st-row-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }

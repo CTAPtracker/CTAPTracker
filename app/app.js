@@ -995,12 +995,15 @@ function buildSettings() {
       ${rowDiv()}
       <div class="st-row">
         <span class="st-row-label">Built by</span>
-        <span class="st-row-value">Jake Rainford</span>
+        <div class="st-row-value-stack">
+          <span class="st-row-value">Jake Rainford</span>
+          <span class="st-row-value-sub">Service &amp; Repair Engineer</span>
+        </div>
       </div>
       ${rowDiv()}
       <div class="st-row">
         <span class="st-row-label">Questions or feedback?</span>
-        <span class="st-row-value">Reach out on Teams or <a href="mailto:jakerainford04@gmail.com" class="st-row-link">email</a></span>
+        <span class="st-row-value">Reach out on Teams</span>
       </div>
     </div>
 
