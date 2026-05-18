@@ -291,31 +291,8 @@ function buildDashboard() {
   }).join('');
 
   // ── Performance Factor ──
-  // PF = raw output × 8.5%, capped at 40 min per day, calculated per-day then summed for week
-  const PF_DAY_CAP = 40;
-  const todayShiftHrs = shiftHours((week.shifts || {})[todayKey]);
-  const todayShiftForPF = todayShiftHrs !== null ? todayShiftHrs : state.baseHours / 5;
-  const todayRawOutput = Math.max(0, todayShiftForPF - todayDedMins / 60);
-  const todayPFMins = Math.min(PF_DAY_CAP, Math.round(todayRawOutput * 0.085 * 60));
-  const todayPFStr = todayPFMins >= 60
-    ? `${Math.floor(todayPFMins / 60)}h ${String(todayPFMins % 60).padStart(2, '0')}m`
-    : `${todayPFMins}m`;
-
-  // Week PF: sum each working day independently (each capped at 40 min)
-  const weekPFMins = wDays.reduce((sum, dk) => {
-    if (dayIsLeave(week, dk)) return sum;
-    const h = shiftHours((week.shifts || {})[dk]);
-    const dayShiftH = h !== null ? h : state.baseHours / 5;
-    const dayDedMins = (week.deductionLog || [])
-      .filter(d => d.date === dk)
-      .reduce((s, d) => s + d.mins, 0);
-    const dayRaw = Math.max(0, dayShiftH - dayDedMins / 60);
-    return sum + Math.min(PF_DAY_CAP, Math.round(dayRaw * 0.085 * 60));
-  }, 0);
-  const weekPFStr = weekPFMins >= 60
-    ? `${Math.floor(weekPFMins / 60)}h ${String(weekPFMins % 60).padStart(2, '0')}m`
-    : `${weekPFMins}m`;
-  const hasPFData = todayShiftHrs !== null;
+  // Formula and per-day cap live in data.cjs (estimatedDailyPFMins).
+  const todayPFMins = estimatedDailyPFMins(dailyRawOutputHours(state, week, todayKey));
 
   // ── Greeting + date header ──
   const isoWeekOf = function(dateObj) {
@@ -647,265 +624,16 @@ function buildCreditGraph() {
 }
 
 function buildInsightsCard(dailyTarget, todayHours, weekTarget, weekEarned, todayPFMins) {
-  const todayKey      = getTodayKey();
-  const todayWk       = getWeekKey(new Date());
-  const week          = state.weeks[currentWeekKey] || { days: {}, shifts: {} };
-  const isCurrentWeek = currentWeekKey === todayWk;
-
-  // All completed past weeks, ascending
-  const pastWks = Object.keys(state.weeks).filter(w => w < todayWk).sort();
-  const nPast   = pastWks.length;
-
-  const hiveIds = new Set(JOB_TYPES.hive.map(j => j.id));
-
-  // Current-week job type tallies
-  let weekHiveCount = 0, weekLeadCount = 0;
-  Object.values(week.days || {}).forEach(dayJobs => {
-    dayJobs.forEach(j => {
-      if (hiveIds.has(j.id))  weekHiveCount++;
-      if (j.id === 'hi_lead') weekLeadCount++;
-    });
+  const insights = getCoachInsights(state, currentWeekKey, {
+    dailyTarget: dailyTarget,
+    todayHours: todayHours,
+    weekTarget: weekTarget,
+    weekEarned: weekEarned,
+    todayPFMins: todayPFMins,
   });
-
-  // NPT logged today
-  const todayNPTMins = isCurrentWeek
-    ? (week.deductionLog || []).filter(d => d.date === todayKey).reduce((s, d) => s + d.mins, 0)
-    : 0;
-
-  // candidates: { p: priority (1=highest), c: colour, t: text, pf?: bool }
-  const cands = [];
-
-  // ── P1: Daily status (current week only) ──────────────────────────────
-  if (isCurrentWeek && dailyTarget > 0) {
-    const gap          = dailyTarget - todayHours;
-    const breakdownHrs = 56 / 60;
-
-    if (todayHours >= dailyTarget) {
-      const over = todayHours - dailyTarget;
-      cands.push({ p: 1, c: 'green',
-        t: `Daily target hit${over >= 0.01 ? ` — ${over.toFixed(2)}h over` : ''}` });
-    } else if (gap <= breakdownHrs + 0.05) {
-      cands.push({ p: 1, c: 'amber',
-        t: `${gap.toFixed(2)}h to go today — one more job puts you there` });
-    } else {
-      const n = Math.ceil(gap / breakdownHrs);
-      cands.push({ p: 1, c: 'amber',
-        t: `${gap.toFixed(2)}h still needed today — around ${n} more job${n === 1 ? '' : 's'} at breakdown rate` });
-    }
-
-    if (todayNPTMins > 0) {
-      const nptH   = todayNPTMins / 60;
-      const nptPct = Math.round((nptH / dailyTarget) * 100);
-      cands.push({ p: 1, c: 'amber',
-        t: `NPT has cost you ${nptH.toFixed(2)}h today — that's ${nptPct}% of your daily target` });
-    }
-  }
-
-  // ── P2: Current-week actionable ───────────────────────────────────────
-  if (isCurrentWeek) {
-    const bal = cumulativeBalance(state);
-
-    // CTAP deficit recovery
-    if (bal < -0.1) {
-      const surplus = weekEarned - weekTarget;
-      if (surplus > 0.1) {
-        const wks = Math.ceil(-bal / surplus);
-        cands.push({ p: 2, c: 'red',
-          t: `CTAP is ${Math.abs(bal).toFixed(2)}h in deficit — at this week's surplus you'd clear it in ~${wks} week${wks === 1 ? '' : 's'}` });
-      } else {
-        cands.push({ p: 2, c: 'red',
-          t: `CTAP is ${Math.abs(bal).toFixed(2)}h in deficit — you'll need a weekly surplus above target to start recovering` });
-      }
-    }
-
-    // Hive flag — compare with history if available
-    if (nPast >= 3) {
-      const avgHive = pastWks.reduce((s, wk) => {
-        let c = 0;
-        Object.values(state.weeks[wk].days || {}).forEach(jobs => jobs.forEach(j => { if (hiveIds.has(j.id)) c++; }));
-        return s + c;
-      }, 0) / nPast;
-      if (avgHive >= 1 && weekHiveCount === 0) {
-        cands.push({ p: 2, c: 'amber',
-          t: `You average ${avgHive.toFixed(1)} Hive install${avgHive >= 2 ? 's' : ''} per week but haven't logged any yet this week` });
-      } else if (weekHiveCount > 0) {
-        cands.push({ p: 3, c: 'green',
-          t: `${weekHiveCount} Hive install${weekHiveCount === 1 ? '' : 's'} logged this week` });
-      }
-    } else if (weekHiveCount === 0) {
-      cands.push({ p: 3, c: 'amber',
-        t: 'No Hive installs logged this week — each adds up to 1.08h credit' });
-    }
-
-    // Boiler lead flag — compare with history if available
-    if (nPast >= 3) {
-      const avgLead = pastWks.reduce((s, wk) => {
-        let c = 0;
-        Object.values(state.weeks[wk].days || {}).forEach(jobs => jobs.forEach(j => { if (j.id === 'hi_lead') c++; }));
-        return s + c;
-      }, 0) / nPast;
-      if (avgLead >= 1 && weekLeadCount === 0) {
-        cands.push({ p: 2, c: 'amber',
-          t: `You average ${avgLead.toFixed(1)} boiler lead${avgLead >= 2 ? 's' : ''} per week — none logged yet this week` });
-      } else if (weekLeadCount > 0) {
-        cands.push({ p: 3, c: 'green',
-          t: `${weekLeadCount} boiler lead${weekLeadCount === 1 ? '' : 's'} banked this week — keep looking on visits` });
-      }
-    } else if (weekLeadCount === 0) {
-      cands.push({ p: 3, c: 'amber',
-        t: 'No boiler leads this week — keep an eye out for HI Lead opportunities on your visits' });
-    } else {
-      cands.push({ p: 3, c: 'green',
-        t: `${weekLeadCount} boiler lead${weekLeadCount === 1 ? '' : 's'} banked this week` });
-    }
-
-    // End-of-week forecast (need 2+ worked days and days remaining)
-    const wkDaysMF = weekDays(todayWk).slice(0, 5);
-    const workedN  = wkDaysMF.filter(dk => dk <= todayKey && !dayIsLeave(week, dk) && ((week.days || {})[dk] || []).length > 0).length;
-    const remainN  = wkDaysMF.filter(dk => dk >  todayKey && !dayIsLeave(week, dk)).length;
-    if (workedN >= 2 && remainN > 0 && weekTarget > 0) {
-      const proj    = weekEarned + (weekEarned / workedN) * remainN;
-      const projGap = proj - weekTarget;
-      cands.push({ p: 2, c: projGap >= 0 ? 'green' : 'amber',
-        t: projGap >= 0
-          ? `On current pace you're heading for ~${proj.toFixed(2)}h — ${projGap.toFixed(2)}h above target`
-          : `On current pace you'll end up around ${proj.toFixed(2)}h — ${Math.abs(projGap).toFixed(2)}h short of target` });
-    }
-
-    // Consecutive days hitting daily target this week
-    let streak = 0;
-    for (const dk of wkDaysMF) {
-      if (dk > todayKey) break;
-      if (dayIsLeave(week, dk)) continue;
-      const dt      = getDailyTarget(state, week, dk);
-      if (dt <= 0) continue;
-      const dayJobs = (week.days || {})[dk] || [];
-      if (dk === todayKey && dayJobs.length === 0) continue; // today not yet started
-      const dh = dayJobs.reduce((s, j) => s + j.creditMins, 0) / 60;
-      if (dh >= dt) { streak++; } else { streak = 0; }
-    }
-    if (streak >= 2) {
-      cands.push({ p: 2, c: 'green',
-        t: `${streak} days in a row hitting daily target this week` });
-    }
-  }
-
-  // ── P3: Pattern insights (3+ completed weeks) ─────────────────────────
-  if (nPast >= 3) {
-    const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
-    // Strongest weekday historically
-    const dayAvgs = [0, 1, 2, 3, 4].map(i => {
-      let total = 0, count = 0;
-      pastWks.forEach(wk => {
-        const dk   = weekDays(wk)[i];
-        const w    = state.weeks[wk];
-        if (dayIsLeave(w, dk)) return;
-        const jobs = (w.days || {})[dk] || [];
-        if (jobs.length === 0) return;
-        total += jobs.reduce((s, j) => s + j.creditMins, 0) / 60;
-        count++;
-      });
-      return count >= 2 ? total / count : null;
-    });
-    const bestIdx = dayAvgs.reduce((b, a, i) => a !== null && (b === -1 || a > dayAvgs[b]) ? i : b, -1);
-    if (bestIdx >= 0) {
-      const todayDow = isCurrentWeek ? (new Date().getDay() + 6) % 7 : -1;
-      if (todayDow === bestIdx) {
-        cands.push({ p: 3, c: 'green',
-          t: `${DAY_NAMES[bestIdx]} is your strongest day on average — you typically log ${dayAvgs[bestIdx].toFixed(2)}h. Make it count.` });
-      } else {
-        cands.push({ p: 4, c: 'green',
-          t: `Your strongest day is usually ${DAY_NAMES[bestIdx]} — you average ${dayAvgs[bestIdx].toFixed(2)}h on that day` });
-      }
-    }
-
-    // NPT this week vs recent average
-    if (isCurrentWeek) {
-      const weekNPTH = (week.deductionLog || []).reduce((s, d) => s + d.mins, 0) / 60;
-      const avgNPTH  = pastWks.reduce((s, wk) => s + (state.weeks[wk].deductionLog || []).reduce((ds, d) => ds + d.mins, 0), 0) / nPast / 60;
-      if (avgNPTH > 0.1) {
-        if (weekNPTH > avgNPTH * 1.3) {
-          cands.push({ p: 3, c: 'red',
-            t: `NPT this week (${weekNPTH.toFixed(1)}h) is above your recent average of ${avgNPTH.toFixed(1)}h — watch the deductions` });
-        } else if (weekNPTH < avgNPTH * 0.5) {
-          cands.push({ p: 4, c: 'green',
-            t: `NPT this week (${weekNPTH.toFixed(1)}h) is well below your recent average of ${avgNPTH.toFixed(1)}h — clean week` });
-        }
-      }
-    }
-
-    // Bonus hit rate (last 10 or all past weeks)
-    const rateWks = pastWks.slice(-10);
-    const hits    = rateWks.filter(wk => bonusAchieved(state, state.weeks[wk])).length;
-    if (rateWks.length >= 3) {
-      const rate = hits / rateWks.length;
-      if (rate >= 0.8) {
-        cands.push({ p: 4, c: 'green',
-          t: `Hit target in ${hits} of the last ${rateWks.length} weeks — strong consistency` });
-      } else if (rate < 0.5) {
-        cands.push({ p: 3, c: 'red',
-          t: `Hit target in only ${hits} of the last ${rateWks.length} weeks — worth looking at what's pulling the average down` });
-      } else {
-        cands.push({ p: 4, c: 'amber',
-          t: `Hit target in ${hits} of the last ${rateWks.length} weeks` });
-      }
-    }
-  }
-
-  // ── P4: Long-term trends (4+ completed weeks) ─────────────────────────
-  if (nPast >= 4) {
-    // CTAP trajectory over last 6 non-excluded weeks
-    const last6     = pastWks.slice(-6).filter(wk => !state.weeks[wk].excludeFromCtap);
-    if (last6.length >= 4) {
-      const change = last6.reduce((s, wk) => s + weekCreditHours(state.weeks[wk]) - adjustedTargetHours(state, state.weeks[wk]), 0);
-      if (Math.abs(change) >= 0.2) {
-        cands.push({ p: 4, c: change >= 0 ? 'green' : 'red',
-          t: `CTAP has ${change >= 0 ? 'improved by +' : 'dropped by '}${Math.abs(change).toFixed(2)}h over the last ${last6.length} weeks` });
-      }
-    }
-
-    // Personal 8-week average comparison (current week, extrapolated)
-    if (isCurrentWeek) {
-      const last8  = pastWks.slice(-8);
-      const avg8   = last8.reduce((s, wk) => s + weekCreditHours(state.weeks[wk]), 0) / last8.length;
-      const wkDaysMF = weekDays(todayWk).slice(0, 5);
-      const workedN  = wkDaysMF.filter(dk => dk <= todayKey && !dayIsLeave(week, dk) && ((week.days || {})[dk] || []).length > 0).length;
-      if (workedN >= 1) {
-        const projFull = (weekEarned / workedN) * 5;
-        const diff     = projFull - avg8;
-        if (Math.abs(diff) >= 0.3) {
-          cands.push({ p: 4, c: diff >= 0 ? 'green' : 'amber',
-            t: `Tracking ${Math.abs(diff).toFixed(2)}h ${diff >= 0 ? 'above' : 'below'} your ${last8.length}-week average of ${avg8.toFixed(2)}h` });
-        }
-      }
-    }
-
-    // Last 4 weeks consistency
-    const last4       = pastWks.slice(-4);
-    const avg4earned  = last4.reduce((s, wk) => s + weekCreditHours(state.weeks[wk]), 0) / 4;
-    const avg4target  = last4.reduce((s, wk) => s + adjustedTargetHours(state, state.weeks[wk]), 0) / 4;
-    const avgGap      = avg4earned - avg4target;
-    if (avgGap >= -0.6 && avgGap < -0.05) {
-      cands.push({ p: 4, c: 'amber',
-        t: `Your last 4 weeks have averaged ${avg4earned.toFixed(2)}h — just ${Math.abs(avgGap).toFixed(2)}h below target each time` });
-    } else if (avgGap >= 0.5) {
-      cands.push({ p: 4, c: 'green',
-        t: `Your last 4 weeks have averaged ${avg4earned.toFixed(2)}h — consistently above target` });
-    }
-  }
-
-  // Performance Factor (lowest priority, informational)
-  if (isCurrentWeek && todayPFMins != null) {
-    cands.push({ p: 5, c: 'amber', t: `Estimated Performance Factor today: ~${todayPFMins} min`, pf: true });
-  }
-
-  // Sort by priority, take top 4
-  cands.sort((a, b) => a.p - b.p);
-  const tips = cands.slice(0, 4);
-
+  const tips = insights.slice(0, 4);
   if (tips.length === 0) {
-    tips.push({ p: 5, c: 'green', t: 'Log some jobs to see insights here' });
+    tips.push({ kind: 'empty', priority: 5, severity: 'green', text: 'Log some jobs to see insights here' });
   }
 
   return `
@@ -915,11 +643,10 @@ function buildInsightsCard(dailyTarget, todayHours, weekTarget, weekEarned, toda
         <span class="insights-count">${tips.length} shown</span>
       </summary>
       <div class="insights-scroll">
-        ${tips.map(tip => `<div class="tip-row${tip.pf ? ' tip-row-pf' : ''}"><span class="tip-dot ${tip.c}"></span><span class="tip-text">${tip.t}</span></div>`).join('')}
+        ${tips.map(tip => `<div class="tip-row${tip.kind === 'pf' ? ' tip-row-pf' : ''}"><span class="tip-dot ${tip.severity}"></span><span class="tip-text">${tip.text}</span></div>`).join('')}
       </div>
     </details>`;
 }
-
 // ── Ticker Strip ───────────────────────────────────────────────────────────
 function buildDayBlock(dayKey, jobs, isToday, week) {
   const total = jobs.reduce((s, j) => s + j.creditMins, 0);
@@ -951,27 +678,7 @@ function buildDayBlock(dayKey, jobs, isToday, week) {
   `;
 }
 
-// ── Recent jobs helper ─────────────────────────────────────────────────────
-function getRecentJobs(n) {
-  const seen = new Set();
-  const result = [];
-  const entries = [];
-  Object.values(state.weeks).forEach(week => {
-    Object.values(week.days || {}).forEach(dayJobs => {
-      dayJobs.forEach(j => { if (j.id && j.ts) entries.push(j); });
-    });
-  });
-  entries.sort((a, b) => b.ts - a.ts);
-  for (const entry of entries) {
-    if (seen.has(entry.id)) continue;
-    const job = findJob(entry.id);
-    if (!job || job.isNpt) continue;
-    seen.add(entry.id);
-    result.push(job);
-    if (result.length >= n) break;
-  }
-  return result;
-}
+// (getRecentJobs lives in data.cjs)
 
 // ── Log Jobs ───────────────────────────────────────────────────────────────
 function buildLogJobs() {
@@ -1014,7 +721,7 @@ function buildLogJobs() {
     </div>` : '';
 
   // Recently used jobs
-  const recentJobs = getRecentJobs(4);
+  const recentJobs = getRecentJobs(state, 4);
   const recentBarHTML = recentJobs.length > 0 ? `
     <div class="recent-bar">
       <span class="recent-label">Recent</span>
@@ -1596,9 +1303,7 @@ function buildWeekForecastSheet() {
     const todayJobs = (week.days || {})[todayKey] || [];
     const todayHrs  = todayJobs.reduce((s, j) => s + j.creditMins, 0) / 60;
     const dailyTgt  = Math.max(0, getDailyTarget(state, week, todayKey) - todayDedMins / 60);
-    const shiftHrs  = shiftHours((week.shifts || {})[todayKey]);
-    const rawOut    = Math.max(0, (shiftHrs !== null ? shiftHrs : state.baseHours / 5) - todayDedMins / 60);
-    const pfMins    = Math.min(40, Math.round(rawOut * 0.085 * 60));
+    const pfMins    = estimatedDailyPFMins(dailyRawOutputHours(state, week, todayKey));
     insightsHTML = buildInsightsCard(dailyTgt, todayHrs, targetHours, earnedHours, pfMins);
   }
 
@@ -1713,90 +1418,48 @@ function buildWeekSummarySheet() {
   const wk = weekSummaryKey;
   const wkDays5 = weekDays(wk).slice(0, 5);
   const initDay = (activeDayKey && wkDays5.includes(activeDayKey)) ? activeDayKey : wkDays5[0];
-  const earned = weekCreditHours(week);
-  const target = adjustedTargetHours(state, week);
-  const bonus = bonusAchieved(state, week);
-  const gap = earned - target;
-  const pct = target > 0 ? Math.min((earned / target) * 100, 100) : 0;
-  const barColour = pct >= 90 ? 'green' : pct >= 70 ? 'amber' : 'red';
 
-  // Best single day
-  const wkDays = weekDays(wk);
-  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  let bestDayHours = 0, bestDayName = '—';
-  wkDays.forEach((dk, i) => {
-    const jobs = (week.days || {})[dk] || [];
-    const dh = jobs.reduce((s, j) => s + j.creditMins, 0) / 60;
-    if (dh > bestDayHours) { bestDayHours = dh; bestDayName = DAY_NAMES[i]; }
-  });
+  // All values + structured "standout" come from data.cjs's weekSummary().
+  const summary       = weekSummary(state, wk);
+  const earned        = summary.earned;
+  const target        = summary.target;
+  const bonus         = summary.bonus;
+  const gap           = summary.gap;
+  const pct           = summary.pct;
+  const barColour     = pct >= 90 ? 'green' : pct >= 70 ? 'amber' : 'red';
+  const bestDayName   = summary.bestDay ? summary.bestDay.name : '—';
+  const bestDayHours  = summary.bestDay ? summary.bestDay.hours : 0;
+  const coreCount     = summary.categoryCounts.core;
+  const hiveCount     = summary.categoryCounts.hive;
+  const salesCount    = summary.categoryCounts.sales;
+  const absenceCount  = summary.categoryCounts.absence;
+  const totalJobCount = summary.totalJobs;
 
-  // Category breakdown
-  const coreIds = new Set(JOB_TYPES.core.map(j => j.id));
-  const hiveIds = new Set(JOB_TYPES.hive.map(j => j.id));
-  const salesIds = new Set(JOB_TYPES.sales.map(j => j.id));
-  let coreCount = 0, hiveCount = 0, salesCount = 0, absenceCount = 0;
-  Object.values(week.days || {}).forEach(dayJobs => {
-    dayJobs.forEach(j => {
-      if (coreIds.has(j.id)) coreCount++;
-      else if (hiveIds.has(j.id)) hiveCount++;
-      else if (salesIds.has(j.id)) salesCount++;
-      else absenceCount++;
-    });
-  });
-  absenceCount += (week.deductionLog || []).length;
-
-  // CTAP impact
-  const ctapImpact = week.excludeFromCtap ? null : gap;
+  // CTAP impact display
+  const ctapImpact = summary.ctapImpact;
   const ctapStr = ctapImpact === null
     ? 'Excluded'
     : (ctapImpact >= 0 ? '+' : '') + ctapImpact.toFixed(2) + 'h';
   const ctapColour = ctapImpact === null ? '' : ctapImpact >= 0 ? 'green' : 'red';
-  const ctapStyle = ctapImpact === null ? ' style="color:var(--muted)"' : '';
+  const ctapStyle  = ctapImpact === null ? ' style="color:var(--muted)"' : '';
 
-  // All jobs for stats
-  let allJobs = [];
-  const dayJobCounts = {};
-  wkDays.forEach(dk => {
-    const jobs = (week.days || {})[dk] || [];
-    allJobs = allJobs.concat(jobs);
-    dayJobCounts[dk] = jobs.length;
-  });
-  const totalJobCount = allJobs.length;
-
-  // Streak — walk backwards through past weeks counting consecutive hits/misses
-  const todayWk = getWeekKey(new Date());
-  const allPastWkKeys = Object.keys(state.weeks).filter(w => w < todayWk).sort();
-  const wkIdx = allPastWkKeys.indexOf(wk);
-  let streakCount = 0;
-  if (wkIdx >= 0) {
-    for (let i = wkIdx; i >= 0; i--) {
-      const w = state.weeks[allPastWkKeys[i]];
-      if (!w || bonusAchieved(state, w) !== bonus) break;
-      streakCount++;
-    }
-  } else {
-    streakCount = 1;
-  }
+  // Streak display
+  const streakCount = summary.streak.count;
   const streakText = streakCount >= 2
     ? (bonus ? `${streakCount} weeks in a row hitting target` : `Missed target ${streakCount} weeks running`)
     : (bonus ? 'Bonus hit this week' : 'Missed target this week');
 
-  // Standout stat
-  const highestJobEntry = allJobs.length > 0
-    ? allJobs.reduce((best, j) => j.creditMins > best.creditMins ? j : best, allJobs[0])
-    : null;
-  const highestJobHours = highestJobEntry ? highestJobEntry.creditMins / 60 : 0;
-  const maxDayCount = Object.values(dayJobCounts).reduce((m, c) => Math.max(m, c), 0);
-  const busiestDayIdx = wkDays.findIndex(dk => dayJobCounts[dk] === maxDayCount);
-
+  // Standout display
   let standoutText = null;
-  if (highestJobHours >= 1.0 && highestJobEntry) {
-    const shortName = highestJobEntry.name.replace(/\s*\(.*$/, '');
-    standoutText = `Highest single job: ${shortName} — ${highestJobHours.toFixed(2)}h`;
-  } else if (maxDayCount >= 5 && busiestDayIdx >= 0) {
-    standoutText = `Busiest day: ${DAY_NAMES[busiestDayIdx]} with ${maxDayCount} jobs`;
-  } else if (totalJobCount > 0) {
-    standoutText = `${totalJobCount} job${totalJobCount === 1 ? '' : 's'} logged across the week`;
+  if (summary.standout) {
+    const s = summary.standout;
+    if (s.kind === 'highest_job') {
+      standoutText = `Highest single job: ${s.name} — ${s.hours.toFixed(2)}h`;
+    } else if (s.kind === 'busiest_day') {
+      standoutText = `Busiest day: ${s.dayName} with ${s.count} jobs`;
+    } else if (s.kind === 'total_jobs') {
+      standoutText = `${s.count} job${s.count === 1 ? '' : 's'} logged across the week`;
+    }
   }
 
   return `
@@ -2536,13 +2199,7 @@ function attachListeners() {
 }
 
 // ── Job Logic ──────────────────────────────────────────────────────────────
-function findJob(id) {
-  for (const cat of Object.values(JOB_TYPES)) {
-    const j = cat.find(j => j.id === id);
-    if (j) return j;
-  }
-  return null;
-}
+// (findJob lives in data.cjs)
 
 function openModal(job) {
   pendingJob = job;
@@ -2650,40 +2307,7 @@ function logJob(job, variableValue, optionalName) {
 }
 
 // ── Coach Mode ─────────────────────────────────────────────────────────────
-function isCoachModeOn() {
-  return localStorage.getItem('jcpd_coach_mode') !== 'false';
-}
-
-function getBestFixedJob() {
-  const all = [...JOB_TYPES.core, ...JOB_TYPES.hive, ...JOB_TYPES.sales];
-  const fixed = all.filter(j => !j.variable && !j.isMentorFull && !j.isMentorPartial && !j.isNpt && j.minutes > 0);
-  return fixed.length ? fixed.reduce((best, j) => j.minutes > best.minutes ? j : best, fixed[0]) : null;
-}
-
-function getHistoricallyStrongDay() {
-  const todayWk = getWeekKey(new Date());
-  const pastWks = Object.keys(state.weeks).filter(wk => wk < todayWk).sort().slice(-8);
-  if (pastWks.length < 3) return null;
-  const totals = [0,0,0,0,0], counts = [0,0,0,0,0];
-  pastWks.forEach(wkKey => {
-    const wk = state.weeks[wkKey];
-    weekDays(wkKey).slice(0,5).forEach((dk, i) => {
-      const jobs = (wk.days || {})[dk] || [];
-      if (jobs.length > 0 && !dayIsLeave(wk, dk)) {
-        totals[i] += jobs.reduce((s,j) => s + j.creditMins, 0) / 60;
-        counts[i]++;
-      }
-    });
-  });
-  const avgs = totals.map((t, i) => counts[i] >= 3 ? t / counts[i] : 0);
-  const maxAvg = Math.max(...avgs);
-  if (maxAvg === 0) return null;
-  const totalH = totals.reduce((s,t) => s+t, 0);
-  const totalC = counts.reduce((s,c) => s+c, 0);
-  const overallAvg = totalC > 0 ? totalH / totalC : 0;
-  if (maxAvg < overallAvg * 1.15) return null;
-  return ['Monday','Tuesday','Wednesday','Thursday','Friday'][avgs.indexOf(maxAvg)];
-}
+// (isCoachModeOn, getBestFixedJob, getHistoricallyStrongDay live in data.cjs)
 
 function buildCtapTrend() {
   const todayWk = getWeekKey(new Date());
@@ -2767,7 +2391,7 @@ function buildCoachCard() {
         msgs.push(`CTAP balance: +${bal.toFixed(2)}h — you're in credit. Keep the consistency going.`);
       }
     }
-    const strongDay = getHistoricallyStrongDay();
+    const strongDay = getHistoricallyStrongDay(state);
     if (strongDay) {
       msgs.push(`${strongDay} is typically your strongest day — a good one to push for more.`);
     } else if (bal > 0.05) {
