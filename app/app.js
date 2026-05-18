@@ -2280,12 +2280,14 @@ function attachListeners() {
   // CTAP tile → cash-out sheet
   const ctapTile = document.getElementById('ctap-tile');
   if (ctapTile) ctapTile.addEventListener('click', openCashOutSheet);
-  const cashoutClose = document.getElementById('cashout-close');
-  if (cashoutClose) cashoutClose.addEventListener('click', closeCashOutSheet);
   const cashoutBackdrop = document.getElementById('cashout-backdrop');
   if (cashoutBackdrop) cashoutBackdrop.addEventListener('click', closeCashOutSheet);
   const cashoutSheet = document.getElementById('cashout-sheet');
   if (cashoutSheet) cashoutSheet.addEventListener('click', e => {
+    if (e.target.closest('#cashout-close')) {
+      closeCashOutSheet();
+      return;
+    }
     const multBtn = e.target.closest('.cashout-mult-btn');
     if (multBtn) {
       cashOutMultiplier = parseFloat(multBtn.dataset.mult);
