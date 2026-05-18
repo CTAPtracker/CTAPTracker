@@ -1,0 +1,3 @@
+# Job credit values and tile composition are policy, not constants
+
+The credit minutes, tile composition (Fit + SGO vs SGO-only vs Fit-only), and even the existence of specific sellable items in the catalogue (inhibitors, Hive products, CO alarms) are set by the employer's CTAP scheme and change frequently as the business adjusts incentives. The catalogue in `data.js` is a snapshot, not a stable contract. Treat it as expected-to-drift: code that depends on these values should not pre-compute, cache long-term, or hard-code them outside the catalogue file. A future feature for admin-editing or remote-fetching the catalogue may be worthwhile but is not in scope today; in the meantime, expect manual catalogue PRs whenever the employer announces a change.
