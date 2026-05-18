@@ -19,6 +19,7 @@ let expandedZeroWeek = null;
 let weekendExpanded = false;
 let openSettingsInfo = null;
 let legalInfoExpanded = false;
+let scheduleNoteOpenDay = null;
 let deleteAccountStep = 'idle';
 let howToExpanded = false;
 let graphWeekKey = getWeekKey(new Date());
@@ -362,7 +363,6 @@ function buildDashboard() {
   return `
     ${isCurrentWeek ? `<div class="dash-greeting" id="greeting-text" data-greeting="${greeting}">${greetDisplay}</div>` : ''}
     ${dateStr ? `<div class="date-header">${dateStr}</div>` : ''}
-    ${week.note ? `<div class="dash-note">${week.note}</div>` : ''}
     <div class="hero-jobs-card">
       <div class="ctap-hero-label" style="margin-bottom:10px">JOB CREDITS</div>
       <div class="hero-three-row">
@@ -487,7 +487,14 @@ function buildSchedule() {
     const d = new Date(dk + 'T00:00:00');
     const dayNum = d.getDate();
     const isToday = dk === todayKey;
-    return `<div class="shift-row${isToday ? ' shift-today' : ''}${isLeave ? ' shift-leave' : ''}"><div class="sched-day-col${isToday ? ' is-today' : ''}"><span class="sched-day-abbr">${DAY_ABBR[i]}</span><span class="sched-day-num">${dayNum}</span></div>${isLeave ? `<div class="sched-leave-label">Annual leave</div>` : `<div class="sched-time-wrap"><input type="time" class="shift-input" data-day="${dk}" data-field="start" value="${s.start || ''}"><span class="shift-sep">–</span><input type="time" class="shift-input" data-day="${dk}" data-field="end" value="${s.end || ''}"></div>`}<span class="sched-hrs${isToday ? ' is-today' : ''}">${isLeave ? 'AL' : hrs !== null ? hrs.toFixed(1) + 'h' : '—'}</span><button class="al-btn${isLeave ? ' active' : ''}" data-day="${dk}" data-action="toggle-leave">${isLeave ? '✓ Leave' : 'Leave'}</button></div>`;
+    const note = (s.note || '').trim();
+    const hasNote = note.length > 0;
+    const isNoteOpen = scheduleNoteOpenDay === dk;
+    const rowHtml = `<div class="shift-row${isToday ? ' shift-today' : ''}${isLeave ? ' shift-leave' : ''}"><div class="sched-day-col${isToday ? ' is-today' : ''}"><span class="sched-day-abbr">${DAY_ABBR[i]}</span><span class="sched-day-num">${dayNum}</span></div>${isLeave ? `<div class="sched-leave-label">Annual leave</div>` : `<div class="sched-time-wrap"><input type="time" class="shift-input" data-day="${dk}" data-field="start" value="${s.start || ''}"><span class="shift-sep">–</span><input type="time" class="shift-input" data-day="${dk}" data-field="end" value="${s.end || ''}"></div>`}<span class="sched-hrs${isToday ? ' is-today' : ''}">${isLeave ? 'AL' : hrs !== null ? hrs.toFixed(1) + 'h' : '—'}</span><button class="al-btn${isLeave ? ' active' : ''}" data-day="${dk}" data-action="toggle-leave">${isLeave ? '✓ Leave' : 'Leave'}</button><button class="sched-note-btn${hasNote ? ' has-note' : ''}${isNoteOpen ? ' is-open' : ''}" data-day="${dk}" data-action="toggle-note" title="Day note" aria-label="Day note">${hasNote ? '●' : '+'}</button></div>`;
+    const notePanel = isNoteOpen
+      ? `<div class="sched-note-panel"><textarea class="sched-note-input" data-day="${dk}" rows="2" placeholder="What happened today? Stuck in traffic, customer reschedule, training…">${note.replace(/</g, '&lt;')}</textarea><p class="sched-note-hint">Saves automatically</p></div>`
+      : '';
+    return `<div class="shift-row-wrap">${rowHtml}${notePanel}</div>`;
   }
 
   const weekdayRows = days.map((dk, i) => buildDayRow(dk, i)).join('');
@@ -523,12 +530,6 @@ function buildSchedule() {
         </div>
         <button id="default-lunch-chip" class="default-lunch-chip">${lunchLabels[defaultLunch] || '30 min'}</button>
       </div>
-    </div>
-    <div class="week-note-wrap">
-      <label class="week-note-label">Week note</label>
-      <textarea id="week-note" class="week-note-input" rows="2"
-        placeholder="e.g. Training Monday, van in Wednesday…">${(week.note || '').replace(/</g, '&lt;')}</textarea>
-      <p class="week-note-hint">Saves automatically</p>
     </div>
   `;
 }
@@ -856,7 +857,6 @@ function buildHistory() {
         <div class="hi-left">
           <div class="hi-week">${weekLabel(wk)}${isCurrent ? ' (current)' : ''}</div>
           <div class="hi-credits">${earned.toFixed(2)}h / ${target.toFixed(2)}h target — ${bonus ? 'Bonus ✓' : pct >= 90 ? 'On track' : pct >= 70 ? 'Amber zone' : 'Below target'}</div>
-          ${week.note ? `<div class="hi-note">${week.note}</div>` : ''}
           ${showDetails && isPast ? `<div class="hi-details-row">
             <button class="ctap-toggle-btn${excluded ? ' excluded' : ''}" data-week-key="${wk}">${excluded ? '✕ Excluded' : '✓ In CTAP'}</button>
             <div class="hi-retro-field">
@@ -1073,12 +1073,18 @@ function buildDayDetailPanel(weekKey, week, dk, editMode) {
   const dateLabel = new Date(dk + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
   const isEmpty = jobs.length === 0 && dayDeds.length === 0 && !mentor && !isLeave;
 
+  const dayNote = ((week.shifts || {})[dk] || {}).note;
+  const noteBlock = dayNote && dayNote.trim()
+    ? `<div class="ddp-note">${dayNote.replace(/</g, '&lt;')}</div>`
+    : '';
+
   const header = `<div class="ddp-header">
     <div class="ddp-date">${dateLabel}</div>
     <div class="ddp-stats-row">
       <span class="ddp-stat">Earned <span class="ddp-stat-val">${isLeave ? '—' : creditsH.toFixed(2) + 'h'}</span></span>
     </div>
-  </div>`;
+  </div>
+  ${noteBlock}`;
 
   if (editMode && jobs.length > 0) {
     const editRows = jobs.map((j, i) => {
@@ -1749,16 +1755,32 @@ function attachListeners() {
     if (newKey <= getWeekKey(new Date())) { currentWeekKey = newKey; render(); }
   });
 
-  // Week note auto-save
-  const weekNoteEl = document.getElementById('week-note');
-  if (weekNoteEl) {
-    weekNoteEl.addEventListener('blur', () => {
-      const wk = getOrCreateWeek(state, currentWeekKey);
-      const val = weekNoteEl.value.trim();
-      if (val) { wk.note = val; } else { delete wk.note; }
-      saveState(state);
+  // Schedule day-note toggle
+  document.querySelectorAll('[data-action="toggle-note"]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const dk = btn.dataset.day;
+      scheduleNoteOpenDay = scheduleNoteOpenDay === dk ? null : dk;
+      render();
+      if (scheduleNoteOpenDay === dk) {
+        const inp = document.querySelector(`.sched-note-input[data-day="${dk}"]`);
+        if (inp) inp.focus();
+      }
     });
-  }
+  });
+  // Schedule day-note auto-save
+  document.querySelectorAll('.sched-note-input').forEach(input => {
+    input.addEventListener('blur', () => {
+      const dk = input.dataset.day;
+      const wk = getOrCreateWeek(state, currentWeekKey);
+      if (!wk.shifts) wk.shifts = {};
+      if (!wk.shifts[dk]) wk.shifts[dk] = {};
+      const val = input.value.trim();
+      if (val) wk.shifts[dk].note = val; else delete wk.shifts[dk].note;
+      saveState(state);
+      if (window.__ctapSyncWeek) window.__ctapSyncWeek(currentWeekKey);
+    });
+  });
 
   // Schedule inline week navigation
   const schedPrev = document.getElementById('sched-prev-week');
@@ -1768,6 +1790,7 @@ function attachListeners() {
     d.setDate(d.getDate() - 7);
     currentWeekKey = getWeekKey(d);
     weekendExpanded = false;
+    scheduleNoteOpenDay = null;
     render();
   });
   if (schedNext) schedNext.addEventListener('click', () => {
@@ -1775,7 +1798,7 @@ function attachListeners() {
     d.setDate(d.getDate() + 7);
     const newKey = getWeekKey(d);
     const maxFuture = new Date(); maxFuture.setDate(maxFuture.getDate() + 56);
-    if (newKey <= getWeekKey(maxFuture)) { currentWeekKey = newKey; weekendExpanded = false; render(); }
+    if (newKey <= getWeekKey(maxFuture)) { currentWeekKey = newKey; weekendExpanded = false; scheduleNoteOpenDay = null; render(); }
   });
 
   // Log Job day picker

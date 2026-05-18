@@ -1089,6 +1089,69 @@ body {
   background: var(--jcpd-accent-dim);
 }
 
+/* ── Schedule: per-day note ── */
+.shift-row-wrap { display: flex; flex-direction: column; }
+.sched-note-btn {
+  margin-left: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--surface3);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.sched-note-btn.has-note {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.sched-note-btn.is-open {
+  background: var(--jcpd-accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.sched-note-panel {
+  padding: 8px 4px 12px;
+  border-bottom: 0.5px solid var(--sep);
+}
+.sched-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface2);
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 16px;
+  font-family: inherit;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 44px;
+  outline: none;
+}
+.sched-note-hint { font-size: 0.66rem; color: var(--muted); margin: 4px 2px 0; }
+
+/* ── Day note in forecast day-detail (read-only) ── */
+.ddp-note {
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-left: 2px solid var(--accent);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
 /* ── Schedule: weekend collapsed row ── */
 .shift-weekend-collapsed {
   display: flex;
