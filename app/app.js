@@ -18,7 +18,6 @@ let ctapProjectedMode = false;
 let expandedZeroWeek = null;
 let weekendExpanded = false;
 let openSettingsInfo = null;
-let creditsInfoExpanded = false;
 let legalInfoExpanded = false;
 let deleteAccountStep = 'idle';
 let howToExpanded = false;
@@ -955,12 +954,12 @@ function buildSettings() {
       </button>
       ${howToExpanded ? `<div class="st-how-to-body">
         <ol class="info-steps">
-          <li><div><span class="info-step-title">Set up your schedule</span>Go to the <b>Schedule</b> tab and enter shift start/end times. Tap <b>Standard week</b> to apply Mon–Fri 08:00–16:30 with default lunch. Shifts save automatically.</div></li>
-          <li><div><span class="info-step-title">Log your jobs</span>Tap <b>Log Job</b> and choose a category. Core, Hive, Sales, and Absence are all covered. Tap a tile to log instantly — dashed tiles are variable and ask for extra input.</div></li>
-          <li><div><span class="info-step-title">Track on the Dashboard</span>See your CTAP balance, today's credit hours, weekly progress, and a day-by-day chart. Tap <b>×</b> to remove a job. Insights surfaces tips on pace, Hive pipeline, and CTAP recovery.</div></li>
-          <li><div><span class="info-step-title">Mark annual leave</span>On the Schedule tab, tap <b>Leave</b> next to any day. That day's hours are removed from your weekly target.</div></li>
-          <li><div><span class="info-step-title">Understand your CTAP balance</span>CTAP is your running credit or deficit. It starts from your starting balance, then each completed week's surplus or shortfall is added. Green = in credit.</div></li>
-          <li><div><span class="info-step-title">History tab</span>View all past weeks with a colour-coded dot. Tap any week to jump to it. Tap <b>✓ In CTAP</b> to exclude a week from your balance calculation.</div></li>
+          <li><div><span class="info-step-title">Set up your schedule</span>Go to the <b>Schedule</b> tab and enter shift start/end times. Tap <b>Standard week</b> for Mon–Fri 08:00–16:30 with default lunch. Tap <b>Leave</b> on any day to mark annual leave. Saves automatically.</div></li>
+          <li><div><span class="info-step-title">Log your jobs</span>Tap <b>Log Job</b> and pick a category — Core, Hive, Sales, or Absence. Tap a tile to log instantly; dashed tiles ask for extra input. You can also tap <b>+ Add a job</b> at the bottom of <b>Today's Jobs</b> on the Dashboard.</div></li>
+          <li><div><span class="info-step-title">Track on the Dashboard</span>See today's credit hours, the week's progress and a day-by-day chart. Tap the <b>CTAP</b> tile to open the cash-out sheet (what your balance is worth after tax). Tap the <b>Week</b> tile for the full weekly forecast with per-day detail.</div></li>
+          <li><div><span class="info-step-title">Understand your CTAP balance</span>CTAP is your running credit or deficit. It starts from your starting balance, then each completed week's surplus or shortfall is added. Green = in credit. You can only cash out when in credit.</div></li>
+          <li><div><span class="info-step-title">History tab</span>View past weeks with a colour-coded dot. Tap any week to jump to it. Tap <b>✓ In CTAP</b> to exclude a week from your balance calculation.</div></li>
+          <li><div><span class="info-step-title">Sync across devices</span>Create an account in Settings to save your data to the cloud and access it on any device. Stays on the device only if you don't sign in.</div></li>
         </ol>
       </div>` : ''}
     </div>
@@ -971,17 +970,6 @@ function buildSettings() {
         <span class="st-row-label">Version</span>
         <span class="st-row-value">v0.6.0 · ${_ctapUser ? 'synced' : 'local'}</span>
       </div>
-      ${rowDiv()}
-      <button class="st-nav-row" id="toggle-credits-info">
-        <span class="st-row-label">How credits work</span>
-        <span class="st-chevron${creditsInfoExpanded ? ' open' : ''}">›</span>
-      </button>
-      ${creditsInfoExpanded ? `<div class="st-credits-body">
-        <div class="st-kv"><span class="st-k">Formula</span><span class="st-v">minutes ÷ 83.58</span></div>
-        <div class="st-kv"><span class="st-k">Bonus</span><span class="st-v">Earned credit hours ≥ adjusted target hours</span></div>
-        <div class="st-kv"><span class="st-k">Adjusted target</span><span class="st-v">Base hours − deductions − leave hours</span></div>
-        <div class="st-kv"><span class="st-k">Storage</span><span class="st-v">${_ctapUser ? 'Synced to your account.' : 'All data is on this device.'}</span></div>
-      </div>` : ''}
       ${rowDiv()}
       <button class="st-nav-row" id="toggle-legal-info">
         <span class="st-row-label">Legal &amp; data</span>
@@ -2227,8 +2215,6 @@ function attachListeners() {
   if (howToBtn) howToBtn.addEventListener('click', () => { howToExpanded = !howToExpanded; render(); });
 
   // How credits work — expand/collapse
-  const creditsBtn = document.getElementById('toggle-credits-info');
-  if (creditsBtn) creditsBtn.addEventListener('click', () => { creditsInfoExpanded = !creditsInfoExpanded; render(); });
   const legalBtn = document.getElementById('toggle-legal-info');
   if (legalBtn) legalBtn.addEventListener('click', () => { legalInfoExpanded = !legalInfoExpanded; render(); });
 
